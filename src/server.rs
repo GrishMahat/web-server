@@ -12,7 +12,6 @@ use crate::threadpool::{ThreadPool, ThreadPoolError};
 use crate::http::{Request, Response, ParseError, Method};
 
 const MAX_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
-const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(30);
 const MAX_CONSECUTIVE_ERRORS: usize = 10;
 const ERROR_RECOVERY_INTERVAL: Duration = Duration::from_secs(5);
 const TEMP_ERROR_RETRY_DELAY: Duration = Duration::from_millis(50);
@@ -216,75 +215,76 @@ impl Server {
         Ok(())
     }
 
-    pub fn is_shutdown_complete(&self) -> bool {
-        // Check if shutdown is complete (state 2) and all worker threads are done
-        self.is_shutting_down.load(Ordering::Relaxed) == 2 && 
-        self.thread_pool.active_count() == 0
-    }
-
-    pub fn shutdown(&mut self) {
-        info!("Initiating graceful shutdown...");
-        self.is_shutting_down.store(1, Ordering::Relaxed);
-        
-        let start = Utc::now();
-        while self.thread_pool.active_count() > 0 {
-            if Utc::now().signed_duration_since(start).num_seconds() > SHUTDOWN_TIMEOUT.as_secs() as i64 {
-                warn!("Shutdown timeout reached, forcing shutdown");
-                break;
-            }
-            std::thread::sleep(Duration::from_millis(100));
-        }
-
-        if let Err(e) = self.thread_pool.graceful_shutdown(SHUTDOWN_TIMEOUT) {
-            error!("Error during thread pool shutdown: {}", e);
-        }
-
-        self.is_shutting_down.store(2, Ordering::Relaxed);
-        info!("Server shutdown initiated");
-    }
 
     fn render_home_page(state: &ServerState) -> Vec<u8> {
         format!(
             "<!DOCTYPE html>\
             <html>\
             <head>\
-                <title>Welcome</title>\
+                <title>Rust HTTP Server - Welcome</title>\
+                <meta charset='utf-8'>\
+                <meta name='viewport' content='width=device-width, initial-scale=1'>\
                 <style>\
-                    body {{ font-family: Arial, sans-serif; margin: 40px; line-height: 1.6; }}\
-                    h1 {{ color: #333; }}\
-                    .status {{ color: #4CAF50; }}\
-                    .nav {{ background: #f8f9fa; padding: 15px; border-radius: 5px; }}\
-                    .stats {{ background: #e9ecef; padding: 15px; border-radius: 5px; margin-top: 20px; }}\
-                    a {{ color: #007bff; text-decoration: none; }}\
-                    a:hover {{ text-decoration: underline; }}\
+                    body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 40px; line-height: 1.6; background: #f5f5f5; }}\
+                    .container {{ max-width: 1000px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }}\
+                    h1 {{ color: #2c3e50; font-size: 2.5em; margin-bottom: 20px; text-align: center; }}\
+                    h3 {{ color: #34495e; margin-top: 25px; }}\
+                    .status {{ color: #27ae60; font-weight: bold; text-align: center; font-size: 1.2em; padding: 10px; }}\
+                    .nav {{ background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0; border: 1px solid #dee2e6; }}\
+                    .stats {{ background: #e9ecef; padding: 20px; border-radius: 8px; margin: 20px 0; border: 1px solid #dee2e6; }}\
+                    .metrics {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-top: 15px; }}\
+                    .metric-card {{ background: white; padding: 15px; border-radius: 6px; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }}\
+                    .metric-value {{ font-size: 1.5em; font-weight: bold; color: #2980b9; }}\
+                    .metric-label {{ color: #7f8c8d; font-size: 0.9em; }}\
+                    a {{ color: #3498db; text-decoration: none; transition: color 0.2s; }}\
+                    a:hover {{ color: #2980b9; text-decoration: underline; }}\
+                    ul {{ list-style-type: none; padding-left: 0; }}\
+                    li {{ margin: 10px 0; padding: 8px; border-radius: 4px; }}\
+                    li:hover {{ background: #f8f9fa; }}\
+                    .footer {{ text-align: center; margin-top: 30px; color: #7f8c8d; font-size: 0.9em; }}\
                 </style>\
             </head>\
             <body>\
-                <h1>Welcome to Rust HTTP Server</h1>\
-                <p class='status'>Server Status: Running</p>\
-                <div class='nav'>\
-                    <h3>Available Routes:</h3>\
-                    <ul>\
-                        <li><a href='/'>/</a> - This page</li>\
-                        <li><a href='/health'>/health</a> - Basic health check</li>\
-                        <li><a href='/stats'>/stats</a> - Detailed server statistics</li>\
-                        <li><a href='/echo'>/echo</a> - Echo server (POST)</li>\
-                    </ul>\
-                </div>\
-                <div class='stats'>\
-                    <h3>Quick Stats:</h3>\
-                    <ul>\
-                        <li>Total Requests: {}</li>\
-                        <li>Error Rate: {:.2}%</li>\
-                        <li>Uptime: {} seconds</li>\
-                    </ul>\
+                <div class='container'>\
+                    <h1>🚀 Rust HTTP Server</h1>\
+                    <p class='status'>✅ Server Status: Running</p>\
+                    <div class='nav'>\
+                        <h3>📍 Available Routes</h3>\
+                        <ul>\
+                            <li>🏠 <a href='/'>/</a> - Home page</li>\
+                            <li>💓 <a href='/health'>/health</a> - Health check endpoint</li>\
+                            <li>📊 <a href='/stats'>/stats</a> - Server statistics (JSON)</li>\
+                            <li>🔄 <a href='/echo'>/echo</a> - Echo service (POST)</li>\
+                        </ul>\
+                    </div>\
+                    <div class='stats'>\
+                        <h3>📈 Server Metrics</h3>\
+                        <div class='metrics'>\
+                            <div class='metric-card'>\
+                                <div class='metric-value'>{}</div>\
+                                <div class='metric-label'>Total Requests</div>\
+                            </div>\
+                            <div class='metric-card'>\
+                                <div class='metric-value'>{:.1}%</div>\
+                                <div class='metric-label'>Success Rate</div>\
+                            </div>\
+                            <div class='metric-card'>\
+                                <div class='metric-value'>{}</div>\
+                                <div class='metric-label'>Uptime (seconds)</div>\
+                            </div>\
+                        </div>\
+                    </div>\
+                    <div class='footer'>\
+                        <p>Powered by Rust 🦀 | Server Time: {}</p>\
+                    </div>\
                 </div>\
             </body>\
             </html>",
             state.request_count.load(Ordering::Relaxed),
-            100.0 * state.error_count.load(Ordering::Relaxed) as f64 
-                / state.request_count.load(Ordering::Relaxed) as f64,
-            Utc::now().signed_duration_since(state.start_time).num_seconds()
+            100.0 - (100.0 * state.error_count.load(Ordering::Relaxed) as f64 
+                / state.request_count.load(Ordering::Relaxed).max(1) as f64),
+            Utc::now().signed_duration_since(state.start_time).num_seconds(),
+            Utc::now().format("%Y-%m-%d %H:%M:%S UTC")
         ).into_bytes()
     }
 

@@ -3,7 +3,6 @@ use std::sync::Arc;
 use std::sync::mpsc;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::time::Duration;
 use std::fmt;
 
 pub struct ThreadPool {
@@ -29,7 +28,6 @@ type Job = Box<dyn FnOnce() + Send + 'static>;
 pub enum ThreadPoolError {
     InvalidSize,
     JobSendError(String),
-    ShutdownError(String),
 }
 
 impl fmt::Display for ThreadPoolError {
@@ -37,7 +35,6 @@ impl fmt::Display for ThreadPoolError {
         match self {
             ThreadPoolError::InvalidSize => write!(f, "Thread pool size must be greater than 0"),
             ThreadPoolError::JobSendError(msg) => write!(f, "Failed to send job: {}", msg),
-            ThreadPoolError::ShutdownError(msg) => write!(f, "Error during shutdown: {}", msg),
         }
     }
 }
@@ -96,43 +93,6 @@ impl ThreadPool {
         self.active_count.load(Ordering::Relaxed)
     }
 
-    pub fn graceful_shutdown(&mut self, timeout: Duration) -> Result<(), ThreadPoolError> {
-        if let Some(sender) = self.sender.take() {
-            // Send terminate  
-            for _ in &self.workers {
-                if let Err(e) = sender.send(Message::Terminate) {
-                    return Err(ThreadPoolError::ShutdownError(
-                        format!("Failed to send terminate message: {}", e)
-                    ));
-                }
-            }
-            let start = std::time::Instant::now();
-            for worker in &mut self.workers {
-                if let Some(thread) = worker.thread.take() {
-                    let mut joined = false;
-                    
-                    while start.elapsed() < timeout {
-                        match thread.join() {
-                            Ok(_) => {
-                                println!("Worker {} completed shutdown", worker.id);
-                                joined = true;
-                                break;
-                            }
-                            Err(_) => {
-                                std::thread::sleep(Duration::from_millis(100));
-                                break;
-                            }
-                        }
-                    }
-                    
-                    if !joined {
-                        println!("Worker {} did not complete shutdown within timeout", worker.id);
-                    }
-                }
-            }
-        }
-        Ok(())
-    }
 }
 
 impl Drop for ThreadPool {
