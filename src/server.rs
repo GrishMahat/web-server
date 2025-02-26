@@ -217,75 +217,178 @@ impl Server {
 
 
     fn render_home_page(state: &ServerState) -> Vec<u8> {
-        format!(
-            "<!DOCTYPE html>\
-            <html>\
-            <head>\
-                <title>Rust HTTP Server - Welcome</title>\
-                <meta charset='utf-8'>\
-                <meta name='viewport' content='width=device-width, initial-scale=1'>\
-                <style>\
-                    body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 40px; line-height: 1.6; background: #f5f5f5; }}\
-                    .container {{ max-width: 1000px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }}\
-                    h1 {{ color: #2c3e50; font-size: 2.5em; margin-bottom: 20px; text-align: center; }}\
-                    h3 {{ color: #34495e; margin-top: 25px; }}\
-                    .status {{ color: #27ae60; font-weight: bold; text-align: center; font-size: 1.2em; padding: 10px; }}\
-                    .nav {{ background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0; border: 1px solid #dee2e6; }}\
-                    .stats {{ background: #e9ecef; padding: 20px; border-radius: 8px; margin: 20px 0; border: 1px solid #dee2e6; }}\
-                    .metrics {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-top: 15px; }}\
-                    .metric-card {{ background: white; padding: 15px; border-radius: 6px; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }}\
-                    .metric-value {{ font-size: 1.5em; font-weight: bold; color: #2980b9; }}\
-                    .metric-label {{ color: #7f8c8d; font-size: 0.9em; }}\
-                    a {{ color: #3498db; text-decoration: none; transition: color 0.2s; }}\
-                    a:hover {{ color: #2980b9; text-decoration: underline; }}\
-                    ul {{ list-style-type: none; padding-left: 0; }}\
-                    li {{ margin: 10px 0; padding: 8px; border-radius: 4px; }}\
-                    li:hover {{ background: #f8f9fa; }}\
-                    .footer {{ text-align: center; margin-top: 30px; color: #7f8c8d; font-size: 0.9em; }}\
-                </style>\
-            </head>\
-            <body>\
-                <div class='container'>\
-                    <h1>🚀 Rust HTTP Server</h1>\
-                    <p class='status'>✅ Server Status: Running</p>\
-                    <div class='nav'>\
-                        <h3>📍 Available Routes</h3>\
-                        <ul>\
-                            <li>🏠 <a href='/'>/</a> - Home page</li>\
-                            <li>💓 <a href='/health'>/health</a> - Health check endpoint</li>\
-                            <li>📊 <a href='/stats'>/stats</a> - Server statistics (JSON)</li>\
-                            <li>🔄 <a href='/echo'>/echo</a> - Echo service (POST)</li>\
-                        </ul>\
-                    </div>\
-                    <div class='stats'>\
-                        <h3>📈 Server Metrics</h3>\
-                        <div class='metrics'>\
-                            <div class='metric-card'>\
-                                <div class='metric-value'>{}</div>\
-                                <div class='metric-label'>Total Requests</div>\
-                            </div>\
-                            <div class='metric-card'>\
-                                <div class='metric-value'>{:.1}%</div>\
-                                <div class='metric-label'>Success Rate</div>\
-                            </div>\
-                            <div class='metric-card'>\
-                                <div class='metric-value'>{}</div>\
-                                <div class='metric-label'>Uptime (seconds)</div>\
-                            </div>\
-                        </div>\
-                    </div>\
-                    <div class='footer'>\
-                        <p>Powered by Rust 🦀 | Server Time: {}</p>\
-                    </div>\
-                </div>\
-            </body>\
-            </html>",
+        let html = format!(r#"<!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>Rust HTTP Server - Welcome</title>
+        <style>
+            body {{
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                margin: 0;
+                padding: 0;
+                background: linear-gradient(135deg, #ece9e6, #ffffff);
+                color: #333;
+            }}
+            .container {{
+                max-width: 1200px;
+                margin: 50px auto;
+                background: #fff;
+                padding: 40px;
+                border-radius: 12px;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            }}
+            header {{
+                text-align: center;
+                margin-bottom: 30px;
+            }}
+            .logo {{
+                width: 80px;
+                height: 80px;
+                background: #2980b9;
+                border-radius: 50%;
+                margin: 0 auto 20px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 2em;
+                color: #fff;
+            }}
+            header h1 {{
+                font-size: 3em;
+                margin: 0;
+                color: #2c3e50;
+            }}
+            .status {{
+                display: inline-block;
+                background: #27ae60;
+                color: #fff;
+                padding: 8px 16px;
+                border-radius: 20px;
+                font-weight: bold;
+                margin-top: 10px;
+                animation: pulse 2s infinite;
+            }}
+            @keyframes pulse {{
+                0% {{ transform: scale(1); }}
+                50% {{ transform: scale(1.05); }}
+                100% {{ transform: scale(1); }}
+            }}
+            nav {{
+                background: #f8f9fa;
+                padding: 20px;
+                border-radius: 8px;
+                margin: 30px 0;
+                border: 1px solid #dee2e6;
+            }}
+            nav ul {{
+                list-style: none;
+                padding: 0;
+                display: flex;
+                flex-wrap: wrap;
+                justify-content: center;
+            }}
+            nav li {{
+                margin: 10px 15px;
+            }}
+            nav a {{
+                color: #3498db;
+                text-decoration: none;
+                font-weight: 500;
+                transition: color 0.2s;
+            }}
+            nav a:hover {{
+                color: #2980b9;
+            }}
+            .stats {{
+                background: #e9ecef;
+                padding: 30px;
+                border-radius: 8px;
+                border: 1px solid #dee2e6;
+                margin-bottom: 30px;
+            }}
+            .stats h2 {{
+                text-align: center;
+                color: #34495e;
+                margin-bottom: 20px;
+            }}
+            .metrics {{
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+                gap: 20px;
+            }}
+            .metric-card {{
+                background: #fff;
+                padding: 20px;
+                border-radius: 8px;
+                text-align: center;
+                box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+            }}
+            .metric-value {{
+                font-size: 2em;
+                font-weight: bold;
+                color: #2980b9;
+            }}
+            .metric-label {{
+                font-size: 0.9em;
+                color: #7f8c8d;
+                margin-top: 5px;
+            }}
+            footer {{
+                text-align: center;
+                font-size: 0.9em;
+                color: #7f8c8d;
+                margin-top: 40px;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <header>
+                <div class="logo">🦀</div>
+                <h1>Rust HTTP Server</h1>
+                <p class="status">Server Status: Running</p>
+            </header>
+            <nav>
+                <h3>Available Routes</h3>
+                <ul>
+                    <li><a href="/">Home</a></li>
+                    <li><a href="/health">Health Check</a></li>
+                    <li><a href="/stats">Server Statistics (JSON)</a></li>
+                    <li><a href="/echo">Echo Service (POST)</a></li>
+                </ul>
+            </nav>
+            <section class="stats">
+                <h2>Server Metrics</h2>
+                <div class="metrics">
+                    <div class="metric-card">
+                        <div class="metric-value">{}</div>
+                        <div class="metric-label">Total Requests</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-value">{:.1}%</div>
+                        <div class="metric-label">Success Rate</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-value">{}</div>
+                        <div class="metric-label">Uptime (seconds)</div>
+                    </div>
+                </div>
+            </section>
+            <footer>
+                <p>Powered by Rust 🦀 | Server Time: {}</p>
+            </footer>
+        </div>
+    </body>
+    </html>"#,
             state.request_count.load(Ordering::Relaxed),
             100.0 - (100.0 * state.error_count.load(Ordering::Relaxed) as f64 
-                / state.request_count.load(Ordering::Relaxed).max(1) as f64),
+                    / state.request_count.load(Ordering::Relaxed).max(1) as f64),
             Utc::now().signed_duration_since(state.start_time).num_seconds(),
             Utc::now().format("%Y-%m-%d %H:%M:%S UTC")
-        ).into_bytes()
+        );
+        html.into_bytes()
     }
 
     fn get_server_stats(state: &ServerState) -> String {
