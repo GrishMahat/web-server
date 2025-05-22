@@ -10,6 +10,7 @@ use chrono::Utc;
 use serde_json::json;
 use crate::threadpool::{ThreadPool, ThreadPoolError};
 use crate::http::{Request, Response, ParseError, Method};
+use crate::middleware::Middleware;
 
 const MAX_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 const MAX_CONSECUTIVE_ERRORS: usize = 10;
@@ -30,10 +31,10 @@ pub struct ServerState {
 
 pub struct Server {
     listener: TcpListener,
-    thread_pool: ThreadPool,
+    pool: ThreadPool,
+    middleware: Arc<Vec<Box<dyn Middleware>>>,
     state: Arc<ServerState>,
-    is_shutting_down: Arc<AtomicUsize>, 
-    // 0 = running 1 = shutting down 2 = shutdown complete
+    is_shutting_down: Arc<AtomicUsize>,
 }
 
 #[derive(Debug)]
@@ -70,10 +71,10 @@ impl From<ThreadPoolError> for ServerError {
 }
 
 impl Server {
-    pub fn new(addr: &str, pool_size: usize) -> Result<Server, ServerError> {
-        info!("Initializing server on {} with {} worker threads", addr, pool_size);
+    pub fn new(addr: &str, workers: usize) -> Result<Self, ServerError> {
+        info!("Initializing server on {} with {} worker threads", addr, workers);
         let listener = TcpListener::bind(addr)?;
-        let thread_pool = ThreadPool::new(pool_size)?;
+        let pool = ThreadPool::new(workers)?;
         
         let state = Arc::new(ServerState {
             start_time: Utc::now(),
@@ -89,7 +90,8 @@ impl Server {
         
         Ok(Server {
             listener,
-            thread_pool,
+            pool,
+            middleware: Arc::new(Vec::new()),
             state,
             is_shutting_down: Arc::new(AtomicUsize::new(0)),
         })
@@ -134,18 +136,17 @@ impl Server {
         );
     }
 
-    #[allow(dead_code)]
-    pub fn add_route<F>(&self, method: Method, path: &str, handler: F) 
-    where
-        F: Fn(&Request, &ServerState) -> Response + Send + Sync + 'static,
-    {
-        let mut routes = self.state.routes.write().unwrap();
-        routes.insert((method, path.to_string()), Arc::new(handler));
+    pub fn with_middleware(mut self, middleware: Box<dyn Middleware>) -> Self {
+        let mut m = Vec::new();
+        std::mem::swap(&mut m, Arc::get_mut(&mut self.middleware).unwrap());
+        m.push(middleware);
+        self.middleware = Arc::new(m);
+        self
     }
 
     pub fn run(&self) -> Result<(), ServerError> {
         info!("Server listening on {}", self.listener.local_addr()?);
-        info!("Active worker threads: {}", self.thread_pool.active_count());
+        info!("Active worker threads: {}", self.pool.active_count());
 
         while self.is_shutting_down.load(Ordering::Relaxed) == 0 {
             if self.state.consecutive_errors.load(Ordering::Relaxed) >= MAX_CONSECUTIVE_ERRORS {
@@ -184,13 +185,14 @@ impl Server {
 
                     let state = Arc::clone(&self.state);
                     let is_shutting_down = Arc::clone(&self.is_shutting_down);
+                    let middleware = Arc::clone(&self.middleware);
 
-                    self.thread_pool.execute(move || {
+                    self.pool.execute(move || {
                         if is_shutting_down.load(Ordering::Relaxed) > 0 {
                             return;
                         }
 
-                        if let Err(e) = handle_connection(stream, &state) {
+                        if let Err(e) = handle_connection(stream, &state, &middleware) {
                             error!("Error handling connection from {}: {}", addr, e);
                             state.error_count.fetch_add(1, Ordering::Relaxed);
                             state.consecutive_errors.fetch_add(1, Ordering::Relaxed);
@@ -199,9 +201,6 @@ impl Server {
                         
                         let duration = Utc::now().signed_duration_since(start_time);
                         debug!("Request from {} completed in {}ms", addr, duration.num_milliseconds());
-                    }).map_err(|e| {
-                        error!("Failed to execute job: {}", e);
-                        ServerError::ThreadPoolError(e)
                     })?;
                 }
                 Err(e) => {
@@ -215,6 +214,11 @@ impl Server {
         Ok(())
     }
 
+    pub fn shutdown(&self) -> Result<(), ServerError> {
+        info!("Shutting down server...");
+        self.is_shutting_down.store(1, Ordering::Relaxed);
+        Ok(())
+    }
 
     fn render_home_page(state: &ServerState) -> Vec<u8> {
         let html = format!(r#"<!DOCTYPE html>
@@ -419,12 +423,12 @@ impl Server {
     }
 }
 
-fn handle_connection(mut stream: TcpStream, state: &ServerState) -> io::Result<()> {
+fn handle_connection(mut stream: TcpStream, state: &ServerState, middleware: &[Box<dyn Middleware>]) -> io::Result<()> {
     let peer_addr = stream.peer_addr()?;
     trace!("Starting request handling for {}", peer_addr);
     
     // Parse the request
-    let request = match Request::parse(&mut stream) {
+    let mut request = match Request::parse(&mut stream) {
         Ok(request) => {
             info!("Received {:?} request for {} from {} with {} headers", 
                 request.method, request.path, peer_addr, request.headers.len());
@@ -459,7 +463,7 @@ fn handle_connection(mut stream: TcpStream, state: &ServerState) -> io::Result<(
         }
     };
     
-    let response = {
+    let mut response = {
         let routes = state.routes.read().unwrap();
         let key = (request.method.clone(), request.path.clone());
         
@@ -474,6 +478,18 @@ fn handle_connection(mut stream: TcpStream, state: &ServerState) -> io::Result<(
         }
     };
     
+    // Process middleware
+    for m in middleware {
+        if let Some(m_response) = m.process(&mut request) {
+            response = m_response;
+        }
+    }
+
+    // Process after middleware
+    for m in middleware {
+        m.after(&request, &mut response);
+    }
+
     // Send the response 
     write_response_with_retry(&mut stream, &response.to_bytes())?;
     
